@@ -37,17 +37,32 @@ class SpecialtyViewSet(viewsets.ModelViewSet):
 #         if self.action in ['create', 'update', 'partial_update', 'destroy']:
 #             return [IsDoctorUser()]
 #         return [IsAuthenticated()]
-
-
 # 
-# class PatientProfileViewSet(viewsets.ModelViewSet):
-#     queryset = PatientProfile.objects.select_related('user').all()
-#     serializer_class = PatientProfileSerializer
+class PatientProfileViewSet(viewsets.ModelViewSet):
+    queryset = PatientProfile.objects.select_related('user').all()
+    serializer_class = PatientProfileSerializer
 
-#     def get_permissions(self):
-#         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-#             return [IsPatientUser()]
-#         return [IsAuthenticated()]
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsPatientUser()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, serializer):
+       # Assign logged-in user automatically on create
+      serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        # Optionally ensure user is not changed on update
+        serializer.save(user=self.request.user)
+
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    
+
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+    
+    
 
 
 # 
