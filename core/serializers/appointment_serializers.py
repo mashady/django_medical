@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from ..models import Appointment, DoctorAvailability
 from datetime import datetime
+from django.utils import timezone
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
     class Meta:
@@ -36,32 +37,43 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         fields = ['doctor', 'date', 'start_time', 'end_time', 'notes']
 
     def validate(self, data):
-        doctor = data['doctor']
-        date = data['date']
-        start_time = data['start_time']
-        end_time = data['end_time']
+        doctor = data.get('doctor')
+        date = data.get('date')
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
 
+        # Ensure all required fields are present
+        if not all([doctor, date, start_time, end_time]):
+            raise serializers.ValidationError("Doctor, date, start time, and end time are required.")
+
+        # Ensure the start time is before the end time
         if start_time >= end_time:
             raise serializers.ValidationError("Start time must be before end time.")
 
+        # Get the day of the week (e.g., 'Monday')
         day_of_week = date.strftime('%A')
-        availability = DoctorAvailability.objects.filter(
+
+        # Check if doctor has availability on this day
+        availability_slots = DoctorAvailability.objects.filter(
             doctor=doctor,
             day_of_week=day_of_week
         )
 
-        if not availability.exists():
-            raise serializers.ValidationError("Doctor is not available on this day.")
+        if not availability_slots.exists():
+            raise serializers.ValidationError(f"Doctor is not available on {day_of_week}s.")
 
-        is_in_available_slot = any(
-            slot.start_time <= start_time and slot.end_time >= end_time
-            for slot in availability
-        )
+        # Check if requested time fits within any available slot
+        is_valid_time = False
+        for slot in availability_slots:
+            if slot.start_time <= start_time and slot.end_time >= end_time:
+                is_valid_time = True
+                break
 
-        if not is_in_available_slot:
-            raise serializers.ValidationError("Selected time is outside doctor's availability.")
+        if not is_valid_time:
+            raise serializers.ValidationError("Requested time is outside the doctor's available hours.")
 
-        conflicts = Appointment.objects.filter(
+        # Check for appointment time conflicts
+        overlapping_appointments = Appointment.objects.filter(
             doctor=doctor,
             date=date,
             start_time__lt=end_time,
@@ -69,7 +81,30 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             status__in=['pending', 'confirmed']
         )
 
-        if conflicts.exists():
+        if overlapping_appointments.exists():
             raise serializers.ValidationError("This time slot is already booked.")
 
+        # Optional: prevent booking in the past
+        if date < timezone.now().date():
+            raise serializers.ValidationError("Cannot book appointments in the past.")
+
+        
         return data
+    def create(self, validated_data):
+        # Get the logged-in user from request context
+        user = self.context['request'].user
+
+        # Get the related patient profile (assuming one-to-one relation)
+        try:
+            patient_profile = user.patientprofile
+        except AttributeError:
+            raise serializers.ValidationError("Only patients can create appointments.")
+
+        # Create the appointment with patient injected
+        appointment = Appointment.objects.create(
+            patient=patient_profile,
+            **validated_data
+        )
+
+        return appointment
+

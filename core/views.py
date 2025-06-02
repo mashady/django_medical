@@ -28,57 +28,57 @@ class SpecialtyViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
 
 
-# 
-# class DoctorProfileViewSet(viewsets.ModelViewSet):
-#     queryset = DoctorProfile.objects.select_related('user', 'specialty').all()
-#     serializer_class = DoctorProfileSerializer
 
-#     def get_permissions(self):
-#         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-#             return [IsDoctorUser()]
-#         return [IsAuthenticated()]
+class DoctorProfileViewSet(viewsets.ModelViewSet):
+    queryset = DoctorProfile.objects.select_related('user', 'specialty').all()
+    serializer_class = DoctorProfileSerializer
 
-
-# 
-# class PatientProfileViewSet(viewsets.ModelViewSet):
-#     queryset = PatientProfile.objects.select_related('user').all()
-#     serializer_class = PatientProfileSerializer
-
-#     def get_permissions(self):
-#         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-#             return [IsPatientUser()]
-#         return [IsAuthenticated()]
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsDoctorUser()]
+        return [IsAuthenticated()]
 
 
-# 
-# class AvailabilityViewSet(viewsets.ModelViewSet):
-#     queryset = DoctorAvailability.objects.all()
-#     serializer_class = DoctorAvailabilitySerializer
-#     permission_classes = [IsDoctorUser]
+
+class PatientProfileViewSet(viewsets.ModelViewSet):
+    queryset = PatientProfile.objects.select_related('user').all()
+    serializer_class = PatientProfileSerializer
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsPatientUser()]
+        return [IsAuthenticated()]
 
 
-# 
-# class AppointmentViewSet(viewsets.ModelViewSet):
-#     queryset = Appointment.objects.all()
-#     serializer_class = AppointmentSerializer
 
-#     def get_serializer_class(self):
-#         if self.action in ['create', 'update']:
-#             return AppointmentCreateSerializer
-#         return AppointmentSerializer
-
-#     def get_permissions(self):
-#         if self.request.user.role == 'admin':
-#             return [IsAdminUser()]
-#         elif self.request.user.role == 'doctor':
-#             return [IsDoctorUser()]
-#         elif self.request.user.role == 'patient':
-#             return [IsPatientUser()]
-#         return [IsAuthenticated()]
+class AvailabilityViewSet(viewsets.ModelViewSet):
+    queryset = DoctorAvailability.objects.all()
+    serializer_class = DoctorAvailabilitySerializer
+    # permission_classes = [IsDoctorUser]
 
 
-#
-# class NotificationViewSet(viewsets.ModelViewSet):
-#     queryset = Notification.objects.all()
-#     serializer_class = NotificationSerializer
-#     permission_classes = [IsAuthenticated]
+
+class AppointmentViewSet(viewsets.ModelViewSet):
+    queryset = Appointment.objects.all()
+    serializer_class = AppointmentSerializer
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update']:
+            return AppointmentCreateSerializer
+        return AppointmentSerializer
+
+    def get_permissions(self):
+        if self.request.user.role == 'admin':
+            return [IsAdminUser()]
+        elif self.request.user.role == 'doctor':
+            return [IsDoctorUser()]
+        elif self.request.user.role == 'patient':
+            return [IsPatientUser()]
+        return [IsAuthenticated()]
+
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
