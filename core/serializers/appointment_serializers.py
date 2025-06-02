@@ -96,7 +96,7 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
 
         # Get the related patient profile (assuming one-to-one relation)
         try:
-            patient_profile = user.patientprofile
+            patient_profile = user.patient_profile
         except AttributeError:
             raise serializers.ValidationError("Only patients can create appointments.")
 
