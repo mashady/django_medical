@@ -6,6 +6,7 @@ from .serializers import *
 from rest_framework.permissions import IsAuthenticated
 from .permissions import IsAdminUser, IsDoctorUser, IsPatientUser
 
+from rest_framework.decorators import action
 
 
 class RegisterUserViewSet(viewsets.ModelViewSet):
@@ -25,7 +26,7 @@ class UserViewSet(viewsets.ModelViewSet):
 class SpecialtyViewSet(viewsets.ModelViewSet):
     queryset = Specialty.objects.all()
     serializer_class = SpecialtySerializer
-    permission_classes = [IsAdminUser]
+    # permission_classes = [IsAdminUser]
 
 
 
@@ -38,6 +39,17 @@ class DoctorProfileViewSet(viewsets.ModelViewSet):
             return [IsDoctorUser()]
         return [IsAuthenticated()]
 
+    @action(detail=False, methods=['get'], url_path='by-specialty')
+    def by_specialty(self, request):
+        specialty_name = request.query_params.get('specialty')
+
+        if specialty_name:
+            doctors = self.queryset.filter(specialty__name__icontains=specialty_name)
+        else:
+            doctors = self.queryset.all()
+
+        serializer = self.get_serializer(doctors, many=True)
+        return Response(serializer.data)
 
 
 class PatientProfileViewSet(viewsets.ModelViewSet):
@@ -76,6 +88,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             return [IsPatientUser()]
         return [IsAuthenticated()]
 
+    def perform_create(self, serializer):
+        try:
+            serializer.save()
+        except IntegrityError:
+            raise ValidationError("This exact appointment time is already taken for this doctor.")
 
 
 class NotificationViewSet(viewsets.ModelViewSet):

@@ -35,7 +35,8 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = ['doctor', 'date', 'start_time', 'end_time', 'notes']
-
+        # This disables the default unique_together validator
+        validators = []
     def validate(self, data):
         doctor = data.get('doctor')
         date = data.get('date')
@@ -87,6 +88,13 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         # Optional: prevent booking in the past
         if date < timezone.now().date():
             raise serializers.ValidationError("Cannot book appointments in the past.")
+        
+        if Appointment.objects.filter(
+            doctor=data['doctor'],
+            date=data['date'],
+            start_time=data['start_time']
+        ).exists():
+            raise serializers.ValidationError("This time slot is already taken for this doctor.")
 
         
         return data

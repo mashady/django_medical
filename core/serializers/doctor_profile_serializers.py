@@ -9,6 +9,7 @@ class SpecialtySerializer(serializers.ModelSerializer):
 class DoctorProfileSerializer(serializers.ModelSerializer):
     from .user_serializers import UserSerializer
     specialty = SpecialtySerializer()
+    user = UserSerializer(read_only=True)
 
     class Meta:
         model = DoctorProfile
