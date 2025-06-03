@@ -2,11 +2,13 @@ from rest_framework import serializers
 from ..models import Appointment, DoctorAvailability
 from datetime import datetime
 from django.utils import timezone
+from .doctor_profile_serializers import DoctorProfileSerializer
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
+    doctor = DoctorProfileSerializer(read_only=True)
     class Meta:
         model = DoctorAvailability
-        fields = ['id', 'day_of_week', 'start_time', 'end_time']
+        fields = ['id', 'doctor', 'day_of_week', 'start_time', 'end_time']
 
 class AppointmentSerializer(serializers.ModelSerializer):
     patient = serializers.SerializerMethodField()

@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from .permissions import IsAdminUser, IsDoctorUser, IsPatientUser
 
 from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
 
 
 class RegisterUserViewSet(viewsets.ModelViewSet):
@@ -59,15 +60,27 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsPatientUser()]
-        return [IsAuthenticated()]
+        return [IsAuthenticated()]  
 
 
 
 class AvailabilityViewSet(viewsets.ModelViewSet):
-    queryset = DoctorAvailability.objects.all()
+    queryset = DoctorAvailability.objects.select_related('doctor').all()
     serializer_class = DoctorAvailabilitySerializer
     # permission_classes = [IsDoctorUser]
 
+    @action(detail=False, methods=['get'], url_path='doctor')
+    def by_doctor(self, request):
+        doctor_id = request.query_params.get('doctor_id')
+
+        if doctor_id: 
+            doctor_profile = get_object_or_404(DoctorProfile, id=doctor_id)
+            availabilities = self.queryset.filter(doctor=doctor_id)
+        else:
+            availabilities = self.queryset.all()
+
+        serializer = self.get_serializer(availabilities, many=True)
+        return Response(serializer.data)
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
@@ -93,6 +106,18 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             serializer.save()
         except IntegrityError:
             raise ValidationError("This exact appointment time is already taken for this doctor.")
+    
+    @action(detail=False, methods=['get'], url_path='doctor')
+    def by_doctor(self, request):
+        doctor_id = request.query_params.get('doctor')
+
+        if doctor_id: 
+             appointments = self.queryset.filter(doctor=doctor_id)
+        else:
+            appointments = self.queryset.all()
+
+        serializer = self.get_serializer(appointments, many=True)
+        return Response(serializer.data)
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
