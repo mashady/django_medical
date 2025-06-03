@@ -15,43 +15,35 @@ class SpecialtySerializer(serializers.ModelSerializer):
         return value
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
+    # specialty = serializers.PrimaryKeyRelatedField(queryset=Specialty.objects.all())
     user = UserSerializer(read_only=True)
     specialty = SpecialtySerializer(read_only=True)
-
     class Meta:
         model = DoctorProfile
         fields = ['id', 'user', 'specialty', 'bio', 'contact_number']
 
-class DoctorProfileCreateUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DoctorProfile
-        fields = ['specialty', 'bio', 'contact_number']
-
-    def validate_bio(self, value):
-        if len(value) < 10:
-            raise serializers.ValidationError("Bio must be at least 10 characters long.")
+    def validate_contact_number(self, value):
+        if not value.startswith('+') or not value[1:].isdigit():
+            raise serializers.ValidationError("Contact number must start with '+' followed by digits.")
+        if len(value) < 10 or len(value) > 15:
+            raise serializers.ValidationError("Contact number must be between 10 and 15 digits long.")
         return value
 
-    def validate_contact_number(self, value):
-        if not value.isdigit():
-            raise serializers.ValidationError("Contact number must contain only digits.")
-        if len(value) < 8:
-            raise serializers.ValidationError("Contact number must be at least 8 digits.")
+    def validate_bio(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Bio is required.")
+        if len(value.strip()) < 10:
+            raise serializers.ValidationError("Bio must be at least 10 characters long.")
         return value
 
     def validate_specialty(self, value):
         if not Specialty.objects.filter(id=value.id).exists():
-            raise serializers.ValidationError("Specialty does not exist.")
+            raise serializers.ValidationError("Specialty not found.")
         return value
 
-    def create(self, validated_data):
-        try:
-            return super().create(validated_data)
-        except Exception as e:
-            raise serializers.ValidationError(f"Error creating doctor profile: {str(e)}")
-
-    def update(self, instance, validated_data):
-        try:
-            return super().update(instance, validated_data)
-        except Exception as e:
-            raise serializers.ValidationError(f"Error updating doctor profile: {str(e)}")
+    def validate(self, attrs):
+        # You can validate multiple fields together here if needed
+        contact_number = attrs.get('contact_number', '')
+        if "0000" in contact_number:
+            raise serializers.ValidationError("Contact number cannot contain repeated zeros.")
+        return attrs

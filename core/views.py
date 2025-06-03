@@ -1,21 +1,27 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from rest_framework.permissions import IsAuthenticated
 from .models import *
 from .serializers import *
-from .permissions import IsAdminUser, IsDoctorUser, IsPatientUser
+from .permissions import IsAdminUser, IsDoctor, IsPatientUser,IsOwnerDoctor
 from rest_framework.decorators import action
-
-
+from django.shortcuts import get_object_or_404
+from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer
 class CustomLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        username = request.data.get("username")
+        email = request.data.get("email")
         password = request.data.get("password")
+
+        try:
+            user_obj = User.objects.get(email=email)
+            username = user_obj.username
+        except User.DoesNotExist:
+            return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
         user = authenticate(request, username=username, password=password)
 
@@ -63,17 +69,36 @@ class SpecialtyViewSet(viewsets.ModelViewSet):
     serializer_class = SpecialtySerializer
     permission_classes = [IsAdminUser]
 
-
-class DoctorProfileViewSet(viewsets.ModelViewSet):
+class DoctorListAPIView(generics.ListAPIView):
     queryset = DoctorProfile.objects.select_related('user', 'specialty').all()
     serializer_class = DoctorProfileSerializer
+    permission_classes = [permissions.AllowAny]
+class DoctorProfileCreateAPIView(generics.CreateAPIView):
+    queryset = DoctorProfile.objects.all()
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated, IsDoctor]
 
-    def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [IsDoctorUser()]
-        return [permissions.IsAuthenticated()]
+    def perform_create(self, serializer):
+        if DoctorProfile.objects.filter(user=self.request.user).exists():
+            raise serializers.ValidationError("Doctor profile already exists.")
+        serializer.save(user=self.request.user)
+class DoctorProfileDetailAPIView(generics.RetrieveAPIView):
+    queryset = DoctorProfile.objects.all()
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated] 
+class DoctorProfileByUserIDAPIView(generics.RetrieveAPIView):
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated]
 
+    def get_object(self):
+        user_id = self.kwargs['user_id']
+        return get_object_or_404(DoctorProfile, user__id=user_id)
+class DoctorProfileRetrieveUpdateAPIView(generics.RetrieveUpdateAPIView):
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated, IsDoctor, IsOwnerDoctor]
 
+    def get_object(self):
+        return self.request.user.doctor_profile
 class PatientProfileViewSet(viewsets.ModelViewSet):
     queryset = PatientProfile.objects.select_related('user').all()
     serializer_class = PatientProfileSerializer
@@ -81,13 +106,25 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsPatientUser()]
-        return [permissions.IsAuthenticated()]
+        return [IsAuthenticated()]
 
+    def perform_create(self, serializer):
+      serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    
+
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
 class AvailabilityViewSet(viewsets.ModelViewSet):
     queryset = DoctorAvailability.objects.all()
     serializer_class = DoctorAvailabilitySerializer
-    permission_classes = [IsDoctorUser]
+    permission_classes = [IsDoctor]
 
     def perform_create(self, serializer):
         serializer.save(doctor=self.request.user.doctor_profile)
@@ -105,7 +142,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if self.request.user.role == 'admin':
             return [IsAdminUser()]
         elif self.request.user.role == 'doctor':
-            return [IsDoctorUser()]
+            return [IsDoctor()]
         elif self.request.user.role == 'patient':
             return [IsPatientUser()]
         return [permissions.IsAuthenticated()]
