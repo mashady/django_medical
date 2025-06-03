@@ -32,11 +32,5 @@ router.register(r'appointments', AppointmentViewSet)
 router.register(r'notifications', NotificationViewSet)
 
 urlpatterns = [
-    path('login/', CustomLoginView.as_view(), name='custom_login'),
     path('', include(router.urls)),
-    # path('doctor/profile/<int:pk>/', DoctorProfileDetailAPIView.as_view(), name='doctor-profile-detail'),
-    path('doctor/profile/<int:user_id>/', DoctorProfileByUserIDAPIView.as_view(), name='doctor-profile-detail'),
-    path('doctor/profile/', DoctorProfileRetrieveUpdateAPIView.as_view(), name='doctor-profile'),
-    path('doctor/profile/create/', DoctorProfileCreateAPIView.as_view(), name='doctor-profile-create'),
-    path('doctors/all/', DoctorListAPIView.as_view(), name='all-doctors'),
-    ]
+]

@@ -125,7 +125,7 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
 class AvailabilityViewSet(viewsets.ModelViewSet):
     queryset = DoctorAvailability.objects.select_related('doctor').all()
     serializer_class = DoctorAvailabilitySerializer
-    # permission_classes = [IsDoctorUser]
+    # permission_classes = [IsDoctor]
 
     @action(detail=False, methods=['get'], url_path='doctor')
     def by_doctor(self, request):
@@ -154,7 +154,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if self.request.user.role == 'admin':
             return [IsAdminUser()]
         elif self.request.user.role == 'doctor':
-            return [IsDoctorUser()]
+            return [IsDoctor()]
         elif self.request.user.role == 'patient':
             return [IsPatientUser()]
         return [IsAuthenticated()]
@@ -167,13 +167,92 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='doctor')
     def by_doctor(self, request):
+        """
+        Retrieve appointments for a specific doctor
+        URL: /appointments/doctor/?doctor=<doctor_id>
+        """
         doctor_id = request.query_params.get('doctor')
 
+        if not doctor_id:
+            return Response(
+                {"error": "doctor parameter is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Validate that doctor exists
+            DoctorProfile.objects.get(id=doctor_id)
+        except DoctorProfile.DoesNotExist:
+            return Response(
+                {"error": "Doctor not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        appointments = self.queryset.filter(doctor=doctor_id)
+        serializer = self.get_serializer(appointments, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='patient')
+    def by_patient(self, request):
+        """
+        Retrieve appointments for a specific patient
+        URL: /appointments/patient/?patient=<patient_id>
+        """
+        patient_id = request.query_params.get('patient')
+
+        if not patient_id:
+            return Response(
+                {"error": "patient parameter is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Validate that patient exists
+            PatientProfile.objects.get(id=patient_id)
+        except PatientProfile.DoesNotExist:
+            return Response(
+                {"error": "Patient not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        appointments = self.queryset.filter(patient=patient_id)
+        serializer = self.get_serializer(appointments, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='my-appointments')
+    def my_appointments(self, request):
+        """
+        Retrieve appointments for the current logged-in user
+        URL: /appointments/my-appointments/
+        """
+        user = request.user
+        
+        if user.role == 'doctor':
+            try:
+                doctor = DoctorProfile.objects.get(user=user)
+                appointments = self.queryset.filter(doctor=doctor)
+            except DoctorProfile.DoesNotExist:
+                return Response(
+                    {"error": "Doctor profile not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif user.role == 'patient':
+            try:
+                patient = PatientProfile.objects.get(user=user)
+                appointments = self.queryset.filter(patient=patient)
+            except PatientProfile.DoesNotExist:
+                return Response(
+                    {"error": "Patient profile not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
         if doctor_id: 
              appointments = self.queryset.filter(doctor=doctor_id)
         else:
-            appointments = self.queryset.all()
-
+            return Response(
+                {"error": "Only doctors and patients can access their appointments"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         serializer = self.get_serializer(appointments, many=True)
         return Response(serializer.data)
 
