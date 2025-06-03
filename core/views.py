@@ -1,11 +1,45 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, generics
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated
 from .models import *
 from .serializers import *
+from .permissions import IsAdminUser, IsDoctor, IsPatientUser,IsOwnerDoctor
+from rest_framework.decorators import action
+from django.shortcuts import get_object_or_404
+from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer
+class CustomLoginView(APIView):
+    permission_classes = [permissions.AllowAny]
 
-from rest_framework.permissions import IsAuthenticated
-from .permissions import IsAdminUser, IsDoctorUser, IsPatientUser
+    def post(self, request):
+        email = request.data.get("email")
+        password = request.data.get("password")
 
+        try:
+            user_obj = User.objects.get(email=email)
+            username = user_obj.username
+        except User.DoesNotExist:
+            return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user = authenticate(request, username=username, password=password)
+
+        if user is not None:
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+
+            return Response({
+                'access': access_token,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'role': user.role,
+                }
+            }, status=status.HTTP_200_OK)
+
+        return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 
@@ -15,6 +49,15 @@ class RegisterUserViewSet(viewsets.ModelViewSet):
     serializer_class = RegisterUserSerializer
     permission_classes = [permissions.AllowAny]
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        response_data = serializer.data
+        response_data['access'] = access_token
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -23,36 +66,51 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
 
 
-
 class SpecialtyViewSet(viewsets.ModelViewSet):
     queryset = Specialty.objects.all()
     serializer_class = SpecialtySerializer
     # permission_classes = [IsAdminUser]
 
-
-
-class DoctorProfileViewSet(viewsets.ModelViewSet):
-    queryset = DoctorProfile.objects.select_related('user', 'specialty').all()
+class DoctorListAPIView(generics.ListAPIView):
     serializer_class = DoctorProfileSerializer
+    permission_classes = [permissions.AllowAny]
 
-    def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [IsDoctorUser()]
-        return [IsAuthenticated()]
+    def get_queryset(self):
+        queryset = DoctorProfile.objects.select_related('user', 'specialty').all()
+        specialty_id = self.request.query_params.get('specialty')
+        if specialty_id:
+            queryset = queryset.filter(specialty_id=specialty_id)
+        return queryset
 
-    @action(detail=False, methods=['get'], url_path='by-specialty')
-    def by_specialty(self, request):
-        specialty_name = request.query_params.get('specialty')
+class DoctorProfileCreateAPIView(generics.CreateAPIView):
+    queryset = DoctorProfile.objects.all()
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated, IsDoctor]
 
-        if specialty_name:
-            doctors = self.queryset.filter(specialty__name__icontains=specialty_name)
-        else:
-            doctors = self.queryset.all()
+    def perform_create(self, serializer):
+        if DoctorProfile.objects.filter(user=self.request.user).exists():
+            raise serializers.ValidationError("Doctor profile already exists.")
+        serializer.save(user=self.request.user)
 
-        serializer = self.get_serializer(doctors, many=True)
-        return Response(serializer.data)
+class DoctorProfileDetailAPIView(generics.RetrieveAPIView):
+    queryset = DoctorProfile.objects.all()
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated] 
 
+class DoctorProfileByUserIDAPIView(generics.RetrieveAPIView):
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated]
 
+    def get_object(self):
+        user_id = self.kwargs['user_id']
+        return get_object_or_404(DoctorProfile, user__id=user_id)
+
+class DoctorProfileRetrieveUpdateAPIView(generics.RetrieveUpdateAPIView):
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated, IsDoctor, IsOwnerDoctor]
+
+    def get_object(self):
+        return self.request.user.doctor_profile
 class PatientProfileViewSet(viewsets.ModelViewSet):
     queryset = PatientProfile.objects.select_related('user').all()
     serializer_class = PatientProfileSerializer
