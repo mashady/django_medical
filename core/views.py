@@ -128,17 +128,26 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-      serializer.save(user=self.request.user)
+        serializer.save(user=self.request.user)
 
     def perform_update(self, serializer):
         serializer.save(user=self.request.user)
 
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
-    
 
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='by-user/(?P<user_id>[^/.]+)')
+    def by_user(self, request, user_id=None):
+        """
+        Retrieve a patient profile by user ID.
+        URL: /patients/by-user/<user_id>/
+        """
+        patient_profile = get_object_or_404(PatientProfile, user__id=user_id)
+        serializer = self.get_serializer(patient_profile)
+        return Response(serializer.data)
 
 class AvailabilityViewSet(viewsets.ModelViewSet):
     queryset = DoctorAvailability.objects.select_related('doctor').all()
