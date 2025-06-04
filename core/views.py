@@ -10,6 +10,11 @@ from .permissions import IsAdminUser, IsDoctor, IsPatientUser,IsOwnerDoctor
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer
+from django.db import IntegrityError
+from rest_framework.exceptions import ValidationError
+ 
+
+
 class CustomLoginView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -178,10 +183,39 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
+        doctor = serializer.validated_data.get('doctor')
+        date = serializer.validated_data.get('date')
+        start_time = serializer.validated_data.get('start_time')
+        end_time = serializer.validated_data.get('end_time')
+
+        overlapping = Appointment.objects.filter(
+            doctor=doctor,
+            date=date,
+            start_time__lt=end_time,
+            end_time__gt=start_time
+        ).exists()
+
+        if overlapping:
+            raise ValidationError({"non_field_errors": ["This time slot conflicts with an existing appointment."]})
+
+        exact_match = Appointment.objects.filter(
+            doctor=doctor,
+            date=date,
+            start_time=start_time
+        ).exists()
+
+        if exact_match:
+            raise ValidationError({"non_field_errors": ["This exact appointment time is already taken for this doctor."]})
+
         try:
-            serializer.save()
-        except IntegrityError:
-            raise ValidationError("This exact appointment time is already taken for this doctor.")
+            patient_profile = PatientProfile.objects.get(user=self.request.user)
+            serializer.save(patient=patient_profile)
+        except PatientProfile.DoesNotExist:
+            raise ValidationError({"non_field_errors": ["Patient profile not found. Please complete your profile first."]})
+        except IntegrityError as e:
+            if 'unique constraint' in str(e).lower() or 'unique violation' in str(e).lower():
+                raise ValidationError({"non_field_errors": ["This exact appointment time is already taken for this doctor."]})
+            raise ValidationError({"non_field_errors": ["Unable to create appointment due to a database constraint."]})
     
     @action(detail=False, methods=['get'], url_path='doctor')
     def by_doctor(self, request):
