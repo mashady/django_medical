@@ -103,10 +103,11 @@ class DoctorProfileCreateAPIView(generics.CreateAPIView):
 class DoctorProfileDetailAPIView(generics.RetrieveAPIView):
     queryset = DoctorProfile.objects.all()
     serializer_class = DoctorProfileSerializer
-    permission_classes = [IsAuthenticated] 
+    # permission_classes = [IsAuthenticated] 
 class DoctorProfileByUserIDAPIView(generics.RetrieveAPIView):
     serializer_class = DoctorProfileSerializer
-    permission_classes = [IsAuthenticated]
+
+    permission_classes = [permissions.AllowAny]
 
     def get_object(self):
         user_id = self.kwargs['user_id']
