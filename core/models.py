@@ -36,6 +36,7 @@ class Specialty(models.Model):
         return self.name
 
 
+from django.db import models
 class DoctorAvailability(models.Model):
     DAY_CHOICES = (
         ('Monday', 'Monday'),
@@ -47,14 +48,22 @@ class DoctorAvailability(models.Model):
         ('Sunday', 'Sunday'),
     )
 
-    doctor = models.ForeignKey(DoctorProfile, on_delete=models.CASCADE, related_name='availabilities')
+    doctor = models.ForeignKey('DoctorProfile', on_delete=models.CASCADE, related_name='availabilities')
     day_of_week = models.CharField(max_length=9, choices=DAY_CHOICES)
     start_time = models.TimeField()
     end_time = models.TimeField()
 
-    def __str__(self):
-        return f"{self.doctor.user.get_full_name()} - {self.day_of_week}"
+    class Meta:
+        unique_together = ['doctor', 'day_of_week', 'start_time', 'end_time']
+        ordering = ['day_of_week', 'start_time']
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.start_time >= self.end_time:
+            raise ValidationError('Start time must be before end time.')
+
+    def __str__(self):
+        return f"{self.doctor.user.get_full_name()} - {self.day_of_week} ({self.start_time}-{self.end_time})"
 
 class Appointment(models.Model):
     STATUS_CHOICES = (

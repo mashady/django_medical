@@ -155,23 +155,92 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 class AvailabilityViewSet(viewsets.ModelViewSet):
-    queryset = DoctorAvailability.objects.select_related('doctor').all()
+    queryset = DoctorAvailability.objects.select_related('doctor__user').all()
     serializer_class = DoctorAvailabilitySerializer
-    # permission_classes = [IsDoctor]
+    permission_classes = [permissions.AllowAny]  # Consider changing this for production
+    
+    def get_queryset(self):
+        """
+        Optionally restricts the returned availabilities to a given doctor,
+        by filtering against a `doctor_id` query parameter in the URL.
+        """
+        queryset = DoctorAvailability.objects.select_related('doctor__user').all()
+        doctor_id = self.request.query_params.get('doctor_id')
+        if doctor_id is not None:
+            queryset = queryset.filter(doctor_id=doctor_id)
+        return queryset
 
-    @action(detail=False, methods=['get'], url_path='doctor')
-    def by_doctor(self, request):
-        doctor_id = request.query_params.get('doctor_id')
-
-        if doctor_id: 
+    @action(detail=False, methods=['get'], url_path='doctor/(?P<doctor_id>[^/.]+)')
+    def by_doctor(self, request, doctor_id=None):
+        """
+        Get availability for a specific doctor
+        URL: /api/availability/doctor/123/
+        """
+        try:
             doctor_profile = get_object_or_404(DoctorProfile, id=doctor_id)
-            availabilities = self.queryset.filter(doctor=doctor_id)
-        else:
-            availabilities = self.queryset.all()
+            availabilities = DoctorAvailability.objects.filter(
+                doctor=doctor_profile
+            ).select_related('doctor__user')
+            serializer = self.get_serializer(availabilities, many=True)
+            return Response({
+                'doctor': {
+                    'id': doctor_profile.id,
+                    'name': doctor_profile.user.get_full_name(),
+                },
+                'availabilities': serializer.data
+            })
+        except ValueError:
+            return Response(
+                {'error': 'Invalid doctor ID'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+    @action(detail=False, methods=['get'], url_path='by-day')
+    def by_day(self, request):
+        """
+        Get availability by day of week
+        URL: /api/availability/by-day/?day=Monday
+        """
+        day = request.query_params.get('day')
+        if not day:
+            return Response(
+                {'error': 'Day parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        availabilities = self.get_queryset().filter(day_of_week=day)
         serializer = self.get_serializer(availabilities, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], url_path='doctors')
+    def list_doctors(self, request):
+        """
+        Get list of all doctors who can have availability
+        URL: /api/availability/doctors/
+        """
+        from .models import DoctorProfile
+        doctors = DoctorProfile.objects.select_related('user').all()
+        doctor_data = [
+            {
+                'id': doctor.id,
+                'name': doctor.user.get_full_name(),
+                'username': doctor.user.username,
+                'email': doctor.user.email,
+            }
+            for doctor in doctors
+        ]
+        return Response(doctor_data)
+
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        """
+        Create multiple availability slots at once
+        """
+        serializer = self.get_serializer(data=request.data, many=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
