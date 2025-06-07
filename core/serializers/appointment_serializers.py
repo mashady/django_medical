@@ -6,17 +6,20 @@ from rest_framework import serializers
 from ..models import DoctorAvailability, DoctorProfile
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
-    doctor_name = serializers.CharField(source='doctor.user.get_full_name', read_only=True)
     
     class Meta:
         model = DoctorAvailability
-        fields = ['id', 'doctor', 'doctor_name', 'day_of_week', 'start_time', 'end_time']
+        fields = ['id', 'doctor', 'day_of_week', 'start_time', 'end_time']
         read_only_fields = ['id']
 
     def validate_doctor(self, value):
         """Validate that the doctor exists"""
-        if not DoctorProfile.objects.filter(id=value.id).exists():
-            raise serializers.ValidationError(f"Doctor with ID {value.id} does not exist.")
+        if isinstance(value, int):
+            if not DoctorProfile.objects.filter(id=value).exists():
+                raise serializers.ValidationError(f"Doctor with ID {value} does not exist.")
+        else:
+            if not DoctorProfile.objects.filter(id=value.id).exists():
+                raise serializers.ValidationError(f"Doctor with ID {value.id} does not exist.")
         return value
 
     def validate(self, data):

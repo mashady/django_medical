@@ -261,7 +261,6 @@ class AvailabilityViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny] 
     
     def get_queryset(self):
-    
         queryset = DoctorAvailability.objects.select_related('doctor__user').all()
         doctor_id = self.request.query_params.get('doctor_id')
         if doctor_id is not None:
@@ -270,7 +269,6 @@ class AvailabilityViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='doctor/(?P<doctor_id>[^/.]+)')
     def by_doctor(self, request, doctor_id=None):
-    
         try:
             doctor_profile = get_object_or_404(DoctorProfile, id=doctor_id)
             availabilities = DoctorAvailability.objects.filter(
@@ -292,7 +290,6 @@ class AvailabilityViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='by-day')
     def by_day(self, request):
-
         day = request.query_params.get('day')
         if not day:
             return Response(
@@ -306,8 +303,6 @@ class AvailabilityViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='doctors')
     def list_doctors(self, request):
- 
-        from .models import DoctorProfile
         doctors = DoctorProfile.objects.select_related('user').all()
         doctor_data = [
             {
@@ -322,13 +317,83 @@ class AvailabilityViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
-
-        serializer = self.get_serializer(data=request.data, many=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        """
+        Create availability entries, replacing existing ones for the same doctor
+        """
+        try:
+            # Extract doctor_id from the first item or from request data
+            if isinstance(request.data, list) and len(request.data) > 0:
+                doctor_id = request.data[0].get('doctor')
+            elif isinstance(request.data, dict):
+                doctor_id = request.data.get('doctor_id') or request.data.get('doctor')
+            else:
+                return Response(
+                    {'error': 'Invalid data format'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not doctor_id:
+                return Response(
+                    {'error': 'Doctor ID is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate that doctor exists
+            try:
+                doctor_profile = DoctorProfile.objects.get(id=doctor_id)
+            except DoctorProfile.DoesNotExist:
+                return Response(
+                    {'error': f'Doctor with ID {doctor_id} does not exist'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # If data is wrapped in an object, extract the availabilities array
+            availability_data = request.data
+            if isinstance(request.data, dict) and 'availabilities' in request.data:
+                availability_data = request.data['availabilities']
+            
+            # Validate the data first
+            serializer = self.get_serializer(data=availability_data, many=True)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Delete existing availability for this doctor
+            DoctorAvailability.objects.filter(doctor_id=doctor_id).delete()
+            
+            # Create new availability entries one by one to handle unique constraints
+            created_availabilities = []
+            for item in serializer.validated_data:
+                try:
+                    # Check if this day already exists for this doctor
+                    existing = DoctorAvailability.objects.filter(
+                        doctor_id=doctor_id,
+                        day_of_week=item['day_of_week']
+                    ).first()
+                    
+                    if existing:
+                        # Update existing record
+                        existing.start_time = item['start_time']
+                        existing.end_time = item['end_time']
+                        existing.save()
+                        created_availabilities.append(existing)
+                    else:
+                        # Create new record
+                        availability = DoctorAvailability.objects.create(**item)
+                        created_availabilities.append(availability)
+                        
+                except Exception as e:
+                    print(f"Error creating availability for {item}: {str(e)}")
+                    continue
+            
+            # Return the created data
+            response_serializer = self.get_serializer(created_availabilities, many=True)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'An error occurred: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.all()

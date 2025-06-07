@@ -54,7 +54,8 @@ class DoctorAvailability(models.Model):
     end_time = models.TimeField()
 
     class Meta:
-        unique_together = ['doctor', 'day_of_week', 'start_time', 'end_time']
+        # Allow only one availability slot per doctor per day (simplified approach)
+        unique_together = ['doctor', 'day_of_week']
         ordering = ['day_of_week', 'start_time']
 
     def clean(self):
@@ -64,7 +65,6 @@ class DoctorAvailability(models.Model):
 
     def __str__(self):
         return f"{self.doctor.user.get_full_name()} - {self.day_of_week} ({self.start_time}-{self.end_time})"
-
 class Appointment(models.Model):
     STATUS_CHOICES = (
         ('pending', 'Pending'),
