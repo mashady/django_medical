@@ -11,8 +11,8 @@ class RegisterUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     username = serializers.CharField(required=True)
     email = serializers.EmailField(required=True)
-    first_name = serializers.CharField(required=True)
-    last_name = serializers.CharField(required=True)
+    # first_name = serializers.CharField(required=True)
+    # last_name = serializers.CharField(required=True)
     role = serializers.ChoiceField(choices=[('doctor', 'Doctor'), ('patient', 'Patient')], required=True)
 
     class Meta:
