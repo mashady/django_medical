@@ -12,8 +12,6 @@ from django.shortcuts import get_object_or_404
 from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
- 
-
 
 class CustomLoginView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -56,6 +54,13 @@ class RegisterUserViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        
+        # Create profile based on user role
+        if user.role == 'doctor':
+            DoctorProfile.objects.create(user=user)
+        elif user.role == 'patient':
+            PatientProfile.objects.create(user=user)
+
         refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
         response_data = serializer.data
@@ -72,7 +77,101 @@ class UserViewSet(viewsets.ModelViewSet):
 class SpecialtyViewSet(viewsets.ModelViewSet):
     queryset = Specialty.objects.all()
     serializer_class = SpecialtySerializer
-    # permission_classes = [IsAdminUser]
+
+class CombinedUserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        if not (request.user.is_staff or request.user.id == int(user_id)):
+            return Response(
+                {"error": "You don't have permission to access this data"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        response_data = {
+            'user': UserSerializer(user).data
+        }
+
+        if user.role == 'doctor':
+            try:
+                profile = DoctorProfile.objects.get(user=user)
+                response_data['profile'] = DoctorProfileSerializer(profile).data
+            except DoctorProfile.DoesNotExist:
+                response_data['profile'] = None
+        elif user.role == 'patient':
+            try:
+                profile = PatientProfile.objects.get(user=user)
+                response_data['profile'] = PatientProfileSerializer(profile).data
+            except PatientProfile.DoesNotExist:
+                response_data['profile'] = None
+
+        return Response(response_data)
+
+class UpdateUserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, user_id): 
+        if not (request.user.is_staff or request.user.id == int(user_id)):
+            return Response(
+                {"error": "You don't have permission to update this data"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        user_serializer = UserSerializer(user, data=request.data.get('user', {}), partial=True)
+        if user_serializer.is_valid():
+            user_serializer.save()
+        else:
+            return Response(user_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        profile_data = request.data.get('profile', {})
+        if user.role == 'doctor':
+            try:
+                profile = DoctorProfile.objects.get(user=user)
+                profile_serializer = DoctorProfileSerializer(profile, data=profile_data, partial=True)
+            except DoctorProfile.DoesNotExist:
+                return Response(
+                    {"error": "Doctor profile not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif user.role == 'patient':
+            try:
+                profile = PatientProfile.objects.get(user=user)
+                profile_serializer = PatientProfileSerializer(profile, data=profile_data, partial=True)
+            except PatientProfile.DoesNotExist:
+                return Response(
+                    {"error": "Patient profile not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            return Response(
+                {"user": user_serializer.data},
+                status=status.HTTP_200_OK
+            )
+
+        if profile_serializer.is_valid():
+            profile_serializer.save()
+            return Response({
+                "user": user_serializer.data,
+                "profile": profile_serializer.data
+            })
+        else:
+            return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class DoctorListAPIView(generics.ListAPIView):
     queryset = DoctorProfile.objects.select_related('user', 'specialty').all()
@@ -89,7 +188,7 @@ class DoctorViewSet(viewsets.ReadOnlyModelViewSet):
         specialty_name = request.query_params.get('specialty')
 
         if specialty_name:
-            doctors = self.queryset.filter(specialty__name__icontains=specialty_name)
+            doctors = self.queryset.filter(specialty_name_icontains=specialty_name)
         else:
             doctors = self.queryset.all()
 
@@ -105,24 +204,26 @@ class DoctorProfileCreateAPIView(generics.CreateAPIView):
         if DoctorProfile.objects.filter(user=self.request.user).exists():
             raise serializers.ValidationError("Doctor profile already exists.")
         serializer.save(user=self.request.user)
+
 class DoctorProfileDetailAPIView(generics.RetrieveAPIView):
     queryset = DoctorProfile.objects.all()
     serializer_class = DoctorProfileSerializer
-    # permission_classes = [IsAuthenticated] 
+
 class DoctorProfileByUserIDAPIView(generics.RetrieveAPIView):
     serializer_class = DoctorProfileSerializer
-
     permission_classes = [permissions.AllowAny]
 
     def get_object(self):
         user_id = self.kwargs['user_id']
         return get_object_or_404(DoctorProfile, user__id=user_id)
+
 class DoctorProfileRetrieveUpdateAPIView(generics.RetrieveUpdateAPIView):
     serializer_class = DoctorProfileSerializer
     permission_classes = [IsAuthenticated, IsDoctor, IsOwnerDoctor]
 
     def get_object(self):
         return self.request.user.doctor_profile
+
 class PatientProfileViewSet(viewsets.ModelViewSet):
     queryset = PatientProfile.objects.select_related('user').all()
     serializer_class = PatientProfileSerializer
@@ -159,7 +260,6 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
 class AvailabilityViewSet(viewsets.ModelViewSet):
     queryset = DoctorAvailability.objects.select_related('doctor').all()
     serializer_class = DoctorAvailabilitySerializer
-    # permission_classes = [IsDoctor]
 
     @action(detail=False, methods=['get'], url_path='doctor')
     def by_doctor(self, request):
@@ -173,8 +273,6 @@ class AvailabilityViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(availabilities, many=True)
         return Response(serializer.data)
-
-
 
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.all()
@@ -195,39 +293,10 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        doctor = serializer.validated_data.get('doctor')
-        date = serializer.validated_data.get('date')
-        start_time = serializer.validated_data.get('start_time')
-        end_time = serializer.validated_data.get('end_time')
-
-        overlapping = Appointment.objects.filter(
-            doctor=doctor,
-            date=date,
-            start_time__lt=end_time,
-            end_time__gt=start_time
-        ).exists()
-
-        if overlapping:
-            raise ValidationError({"non_field_errors": ["This time slot conflicts with an existing appointment."]})
-
-        exact_match = Appointment.objects.filter(
-            doctor=doctor,
-            date=date,
-            start_time=start_time
-        ).exists()
-
-        if exact_match:
-            raise ValidationError({"non_field_errors": ["This exact appointment time is already taken for this doctor."]})
-
         try:
-            patient_profile = PatientProfile.objects.get(user=self.request.user)
-            serializer.save(patient=patient_profile)
-        except PatientProfile.DoesNotExist:
-            raise ValidationError({"non_field_errors": ["Patient profile not found. Please complete your profile first."]})
-        except IntegrityError as e:
-            if 'unique constraint' in str(e).lower() or 'unique violation' in str(e).lower():
-                raise ValidationError({"non_field_errors": ["This exact appointment time is already taken for this doctor."]})
-            raise ValidationError({"non_field_errors": ["Unable to create appointment due to a database constraint."]})
+            serializer.save()
+        except IntegrityError:
+            raise ValidationError("This exact appointment time is already taken for this doctor.")
     
     @action(detail=False, methods=['get'], url_path='doctor')
     def by_doctor(self, request):
@@ -244,7 +313,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            # Validate that doctor exists
             DoctorProfile.objects.get(id=doctor_id)
         except DoctorProfile.DoesNotExist:
             return Response(
@@ -271,7 +339,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            # Validate that patient exists
             PatientProfile.objects.get(id=patient_id)
         except PatientProfile.DoesNotExist:
             return Response(
@@ -317,7 +384,6 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(appointments, many=True)
         return Response(serializer.data)
-
 
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
