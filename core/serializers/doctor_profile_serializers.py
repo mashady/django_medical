@@ -18,15 +18,18 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     # specialty = serializers.PrimaryKeyRelatedField(queryset=Specialty.objects.all())
     user = UserSerializer(read_only=True)
     specialty = SpecialtySerializer(read_only=True)
+    specialty_id = serializers.PrimaryKeyRelatedField(
+        queryset=Specialty.objects.all(), write_only=True, required=False, source='specialty'
+    )
     class Meta:
         model = DoctorProfile
-        fields = ['id', 'user', 'specialty', 'bio', 'contact_number']
+        fields = ['id', 'user', 'specialty', 'specialty_id', 'bio', 'contact_number']
 
     def validate_contact_number(self, value):
         if not value.startswith('+') or not value[1:].isdigit():
-            raise serializers.ValidationError("Contact number must start with '+' followed by digits.")
-        if len(value) < 10 or len(value) > 15:
-            raise serializers.ValidationError("Contact number must be between 10 and 15 digits long.")
+            raise serializers.ValidationError("Contact number must start with '+2' followed by 11 digits.")
+        if len(value) != 13:
+            raise serializers.ValidationError("Contact number must start with '+2' followed by 11 digits")
         return value
 
     def validate_bio(self, value):
@@ -36,10 +39,10 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Bio must be at least 10 characters long.")
         return value
 
-    def validate_specialty(self, value):
-        if not Specialty.objects.filter(id=value.id).exists():
-            raise serializers.ValidationError("Specialty not found.")
-        return value
+    # def validate_specialty(self, value):
+    #     if not Specialty.objects.filter(id=value.id).exists():
+    #         raise serializers.ValidationError("Specialty not found.")
+    #     return value
 
     def validate(self, attrs):
         # You can validate multiple fields together here if needed
@@ -47,3 +50,4 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         if "0000" in contact_number:
             raise serializers.ValidationError("Contact number cannot contain repeated zeros.")
         return attrs
+
