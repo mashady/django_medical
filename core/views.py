@@ -152,7 +152,12 @@ class UpdateUserProfileView(APIView):
         elif user.role == 'patient':
             try:
                 profile = PatientProfile.objects.get(user=user)
-                profile_serializer = PatientProfileSerializer(profile, data=profile_data, partial=True)
+                profile_serializer = PatientProfileSerializer(profile, data=request.data, partial=True)
+                if profile_serializer.is_valid():
+                    profile_serializer.save()
+                    return Response(profile_serializer.data)
+                else:
+                    return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             except PatientProfile.DoesNotExist:
                 return Response(
                     {"error": "Patient profile not found"},
