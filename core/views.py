@@ -152,7 +152,12 @@ class UpdateUserProfileView(APIView):
         elif user.role == 'patient':
             try:
                 profile = PatientProfile.objects.get(user=user)
-                profile_serializer = PatientProfileSerializer(profile, data=profile_data, partial=True)
+                profile_serializer = PatientProfileSerializer(profile, data=request.data, partial=True)
+                if profile_serializer.is_valid():
+                    profile_serializer.save()
+                    return Response(profile_serializer.data)
+                else:
+                    return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             except PatientProfile.DoesNotExist:
                 return Response(
                     {"error": "Patient profile not found"},
@@ -188,7 +193,7 @@ class DoctorViewSet(viewsets.ReadOnlyModelViewSet):
         specialty_name = request.query_params.get('specialty')
 
         if specialty_name:
-            doctors = self.queryset.filter(specialty_name_icontains=specialty_name)
+            doctors = self.queryset.filter(specialty__name__icontains=specialty_name)
         else:
             doctors = self.queryset.all()
 
@@ -233,14 +238,16 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
             return [IsPatientUser()]
         return [IsAuthenticated()]
 
+
+    @action(detail=False, methods=['post'], url_path='patients')
     def perform_create(self, serializer):
+        if PatientProfile.objects.filter(user=self.request.user).exists():
+            raise ValidationError("You already have a profile.")
         serializer.save(user=self.request.user)
+
 
     def perform_update(self, serializer):
         serializer.save(user=self.request.user)
-
-    def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
@@ -291,10 +298,15 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        try:
+        # Auto-assign patient if current user is a patient
+        if self.request.user.role == 'patient' and not serializer.validated_data.get('patient'):
+            try:
+                patient_profile = PatientProfile.objects.get(user=self.request.user)
+                serializer.save(patient=patient_profile)
+            except PatientProfile.DoesNotExist:
+                raise ValidationError("Patient profile not found.")
+        else:
             serializer.save()
-        except IntegrityError:
-            raise ValidationError("This exact appointment time is already taken for this doctor.")
     
     @action(detail=False, methods=['get'], url_path='doctor')
     def by_doctor(self, request):
