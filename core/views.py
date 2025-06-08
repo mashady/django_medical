@@ -152,7 +152,12 @@ class UpdateUserProfileView(APIView):
         elif user.role == 'patient':
             try:
                 profile = PatientProfile.objects.get(user=user)
-                profile_serializer = PatientProfileSerializer(profile, data=profile_data, partial=True)
+                profile_serializer = PatientProfileSerializer(profile, data=request.data, partial=True)
+                if profile_serializer.is_valid():
+                    profile_serializer.save()
+                    return Response(profile_serializer.data)
+                else:
+                    return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             except PatientProfile.DoesNotExist:
                 return Response(
                     {"error": "Patient profile not found"},
@@ -233,14 +238,16 @@ class PatientProfileViewSet(viewsets.ModelViewSet):
             return [IsPatientUser()]
         return [IsAuthenticated()]
 
+
+    @action(detail=False, methods=['post'], url_path='patients')
     def perform_create(self, serializer):
+        if PatientProfile.objects.filter(user=self.request.user).exists():
+            raise ValidationError("You already have a profile.")
         serializer.save(user=self.request.user)
+
 
     def perform_update(self, serializer):
         serializer.save(user=self.request.user)
-
-    def partial_update(self, request, *args, **kwargs):
-        return super().partial_update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
