@@ -291,10 +291,15 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
     def perform_create(self, serializer):
-        try:
+        # Auto-assign patient if current user is a patient
+        if self.request.user.role == 'patient' and not serializer.validated_data.get('patient'):
+            try:
+                patient_profile = PatientProfile.objects.get(user=self.request.user)
+                serializer.save(patient=patient_profile)
+            except PatientProfile.DoesNotExist:
+                raise ValidationError("Patient profile not found.")
+        else:
             serializer.save()
-        except IntegrityError:
-            raise ValidationError("This exact appointment time is already taken for this doctor.")
     
     @action(detail=False, methods=['get'], url_path='doctor')
     def by_doctor(self, request):
