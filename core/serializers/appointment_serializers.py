@@ -2,10 +2,30 @@ from rest_framework import serializers
 from ..models import Appointment, DoctorAvailability
 from datetime import datetime
 
+from rest_framework import serializers
+from ..models import DoctorAvailability, DoctorProfile
+
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
+    
     class Meta:
         model = DoctorAvailability
-        fields = ['id', 'day_of_week', 'start_time', 'end_time']
+        fields = ['id', 'doctor', 'day_of_week', 'start_time', 'end_time']
+        read_only_fields = ['id']
+
+    def validate_doctor(self, value):
+        """Validate that the doctor exists"""
+        if isinstance(value, int):
+            if not DoctorProfile.objects.filter(id=value).exists():
+                raise serializers.ValidationError(f"Doctor with ID {value} does not exist.")
+        else:
+            if not DoctorProfile.objects.filter(id=value.id).exists():
+                raise serializers.ValidationError(f"Doctor with ID {value.id} does not exist.")
+        return value
+
+    def validate(self, data):
+        if data['start_time'] >= data['end_time']:
+            raise serializers.ValidationError("Start time must be before end time.")
+        return data
 
 class AppointmentSerializer(serializers.ModelSerializer):
     patient = serializers.SerializerMethodField()
@@ -44,7 +64,6 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         if start_time >= end_time:
             raise serializers.ValidationError("Start time must be before end time.")
 
- # Check if doctor is available on the selected day
         day_of_week = date.strftime('%A')
         availability = DoctorAvailability.objects.filter(
             doctor=doctor,
@@ -54,7 +73,6 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         if not availability.exists():
             raise serializers.ValidationError("Doctor is not available on this day.")
 
-        # Check if time is within any available slot
         is_in_available_slot = any(
             slot.start_time <= start_time and slot.end_time >= end_time
             for slot in availability
@@ -63,7 +81,6 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         if not is_in_available_slot:
             raise serializers.ValidationError("Selected time is outside doctor's availability.")
 
-        # Check for overlapping appointments
         conflicts = Appointment.objects.filter(
             doctor=doctor,
             date=date,
@@ -75,13 +92,4 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
         if conflicts.exists():
             raise serializers.ValidationError("This time slot is already booked.")
 
-        # Check for exact duplicate appointment (to override unique_together error)
-        if Appointment.objects.filter(
-            doctor=doctor,
-            date=date,
-            start_time=start_time
-        ).exists():
-            raise serializers.ValidationError("This exact appointment already exists.")
-
         return data
-
