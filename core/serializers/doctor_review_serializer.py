@@ -1,27 +1,11 @@
 from rest_framework import serializers
-from ..models import PatientProfile , DoctorReview
-from .user_serializers import UserSerializer  
-
-class PatientProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-
-    class Meta:
-        model = PatientProfile
-        fields = ['id', 'user', 'phone_number', 'address' ,'Blood_Type', 'emergency_contact_phone', 'date_of_birth', 'allergies', 'medical_conditions', 'image']
-
-
-class PatientProfileUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PatientProfile
-        fields = ['phone_number', 'address']
-
+from core.models import DoctorReview
 
 
 class DoctorReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoctorReview
         fields = ['id', 'doctor', 'patient', 'rating', 'comment', 'created_at']
-        read_only_fields = ['id', 'patient', 'created_at']
 
 
     def validate_rating(self, value):
