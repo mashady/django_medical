@@ -573,6 +573,18 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             fail_silently=False
         )
         return Response({'message': f'Appointment status updated to {new_status} and email sent.'})
+    @action(detail=True, methods=['put'], url_path='cancel')
+    def cancel_appointment(self, request, pk=None):
+        appointment = self.get_object()
+
+       
+        if appointment.status == 'cancelled':
+            return Response({"detail": "Appointment already cancelled."}, status=status.HTTP_400_BAD_REQUEST)
+
+        appointment.status = 'cancelled'
+        appointment.save()
+
+        return Response({"detail": "Appointment cancelled successfully."}, status=status.HTTP_200_OK)
 
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
