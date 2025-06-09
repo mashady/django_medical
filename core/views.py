@@ -173,7 +173,7 @@ class UpdateUserProfileView(APIView):
         if user.role == 'doctor':
             try:
                 profile = DoctorProfile.objects.get(user=user)
-                profile_serializer = DoctorProfileSerializer(profile, data=profile_data, partial=True)
+                profile_serializer = DoctorProfileSerializer(profile, data=request.data, partial=True)
             except DoctorProfile.DoesNotExist:
                 return Response(
                     {"error": "Doctor profile not found"},
