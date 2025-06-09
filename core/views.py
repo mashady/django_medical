@@ -107,9 +107,9 @@ class UserViewSet(viewsets.ModelViewSet):
 class SpecialtyViewSet(viewsets.ModelViewSet):
     queryset = Specialty.objects.all()
     serializer_class = SpecialtySerializer
-
+    permission_classes = [permissions.AllowAny]
 class CombinedUserProfileView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, user_id):
         if not (request.user.is_staff or request.user.id == int(user_id)):
