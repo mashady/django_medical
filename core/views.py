@@ -13,7 +13,7 @@ from .serializers import PatientProfileSerializer, PatientProfileUpdateSerialize
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
 from django.core.mail import send_mail
-from rest_framework.decorators import api_view, permission_classes
+from django.conf import settings
 
 class CustomLoginView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -563,7 +563,16 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment.status = new_status
         appointment.save()
-        return Response({'message': f'Appointment status updated to {new_status}'})
+
+        patient_email = appointment.patient.user.email  # adjust if user is accessed differently
+        send_mail(
+            subject='Appointment Status Updated',
+            message=f'Your appointment on {appointment.date} has been updated to "{new_status}".',
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=[patient_email],
+            fail_silently=False
+        )
+        return Response({'message': f'Appointment status updated to {new_status} and email sent.'})
 
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
