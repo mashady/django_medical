@@ -18,11 +18,23 @@ class PatientProfileUpdateSerializer(serializers.ModelSerializer):
 
 
 class DoctorReviewSerializer(serializers.ModelSerializer):
+    patient = serializers.SerializerMethodField()
     class Meta:
         model = DoctorReview
         fields = ['id', 'doctor', 'patient', 'rating', 'comment', 'created_at']
         read_only_fields = ['id', 'patient', 'created_at']
 
+
+
+    def get_patient(self, obj):
+        user = obj.patient.user
+        return {
+            "id": obj.patient.user.id,
+            "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+            "image": self.context['request'].build_absolute_uri(obj.patient.image.url) if obj.patient.image else None
+        }
+
+    
 
     def validate_rating(self, value):
         if value < 1 or value > 5:

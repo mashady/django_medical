@@ -552,6 +552,18 @@ class DoctorReviewViewSet(viewsets.ModelViewSet):
         serializer.save(patient=patient)
 
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+
+        if instance.patient.user != request.user:
+            return Response(
+                {"detail": "You do not have permission to delete this review."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        self.perform_destroy(instance)
+        return Response({"detail": "Review deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
 
 
     @action(detail=False, methods=['get'], url_path='doctor')

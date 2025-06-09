@@ -20,7 +20,8 @@ from .views import (
     DoctorListAPIView,
     DoctorViewSet,
     CombinedUserProfileView,  
-    UpdateUserProfileView
+    UpdateUserProfileView,
+    DoctorReviewViewSet
 )
 
 from .views import (
