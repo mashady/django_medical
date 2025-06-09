@@ -23,7 +23,7 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
     )
     class Meta:
         model = DoctorProfile
-        fields = ['id', 'user', 'specialty', 'specialty_id', 'bio', 'contact_number']
+        fields = ['id', 'user', 'specialty', 'specialty_id', 'bio', 'contact_number', 'image']
 
     def validate_contact_number(self, value):
         if not value.startswith('+') or not value[1:].isdigit():
