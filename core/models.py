@@ -16,6 +16,7 @@ class DoctorProfile(models.Model):
     bio = models.TextField(blank=True)
     contact_number = models.CharField(max_length=20)
     image = models.ImageField(upload_to='doctor_images/', null=True, blank=True)
+    experience = models.IntegerField(default=0, blank=True)
     def __str__(self):
         return self.user.get_full_name()
 
