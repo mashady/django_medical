@@ -9,9 +9,10 @@ from .serializers import *
 from .permissions import IsAdminUser, IsDoctor, IsPatientUser,IsOwnerDoctor
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer
+from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer, DoctorProfileSerializer ,DoctorReviewSerializer
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
+
 
 class CustomLoginView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -522,3 +523,123 @@ class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+
+
+class DoctorReviewViewSet(viewsets.ModelViewSet):
+    queryset = DoctorReview.objects.all()
+    serializer_class = DoctorReviewSerializer
+
+    # def get_permissions(self):
+    #     if self.action in ['create', 'update', 'partial_update']:
+    #         return [IsAuthenticated()]
+        
+    
+    def perform_create(self, serializer):
+        try:
+            patient = PatientProfile.objects.get(user=self.request.user)
+        except PatientProfile.DoesNotExist:
+            raise serializers.ValidationError("Patient profile not found.")
+        serializer.save(patient=patient)
+
+
+    def perform_update(self, serializer):
+        try:
+            patient = PatientProfile.objects.get(user=self.request.user)
+        except PatientProfile.DoesNotExist:
+            raise serializers.ValidationError("Patient profile not found.")
+        serializer.save(patient=patient)
+
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+
+        if instance.patient.user != request.user:
+            return Response(
+                {"detail": "You do not have permission to delete this review."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        self.perform_destroy(instance)
+        return Response({"detail": "Review deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
+
+
+    @action(detail=False, methods=['get'], url_path='doctor')
+    def by_doctor(self, request):
+        """
+        Retrieve reviews for a specific doctor
+        URL: /reviews/doctor/?doctor=<doctor_id>
+        """
+        doctor_id = request.query_params.get('doctor')
+
+        if not doctor_id:
+            return Response(
+                {"error": "doctor parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            DoctorProfile.objects.get(id=doctor_id)
+        except DoctorProfile.DoesNotExist:
+            return Response(
+                {"error": "Doctor not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        reviews = self.queryset.filter(doctor=doctor_id)
+
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
+    @action(detail=False, methods=['get'], url_path='patient')
+    def by_patient(self, request):
+        """
+        Retrieve reviews for a specific patient
+        URL: /reviews/patient/?patient=<patient_id>
+        """
+        patient_id = request.query_params.get('patient')
+
+        if not patient_id:
+            return Response(
+                {"error": "patient parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            PatientProfile.objects.get(id=patient_id)
+        except PatientProfile.DoesNotExist:
+            return Response(
+                {"error": "Patient not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        reviews = self.queryset.filter(patient=patient_id)
+
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
+    
+
+    @action(detail=False, methods=['get'], url_path='my-reviews')
+    def my_reviews(self, request):
+        """
+        Retrieve reviews for the current logged-in user
+        URL: /reviews/my-reviews/
+        """
+        user = request.user
+        if user.role == 'patient':
+            patient = PatientProfile.objects.get(user=user)
+            reviews = self.queryset.filter(patient=patient)
+        elif user.role == 'doctor':
+            doctor = DoctorProfile.objects.get(user=user)
+            reviews = self.queryset.filter(doctor=doctor)
+        else:
+            return Response(
+                {"error": "Only doctors and patients can access their reviews"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
+    
+
+
