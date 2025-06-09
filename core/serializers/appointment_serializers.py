@@ -91,3 +91,5 @@ class AppointmentCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This time slot is already booked.")
 
         return data
+
+
