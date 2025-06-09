@@ -33,14 +33,27 @@ class CustomLoginView(APIView):
             refresh = RefreshToken.for_user(user)
             access_token = str(refresh.access_token)
 
+            profile_id = None
+            if user.role == 'doctor':
+                try:
+                    profile_id = user.doctor_profile.id
+                except DoctorProfile.DoesNotExist:
+                    profile_id = None
+            elif user.role == 'patient':
+                try:
+                    profile_id = user.patient_profile.id
+                except PatientProfile.DoesNotExist:
+                    profile_id = None
+
             return Response({
                 'access': access_token,
                 'user': {
-                    'id': user.id,
+                    'user_id': user.id,
                     'username': user.username,
                     'email': user.email,
                     'role': user.role,
-                }
+                    'profile_id': profile_id,
+                },
             }, status=status.HTTP_200_OK)
 
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -66,6 +79,21 @@ class RegisterUserViewSet(viewsets.ModelViewSet):
         access_token = str(refresh.access_token)
         response_data = serializer.data
         response_data['access'] = access_token
+        response_data['user_id'] = user.id
+
+        # Add profile_id based on user role
+        profile_id = None
+        if user.role == 'doctor':
+            try:
+                profile_id = user.doctor_profile.id
+            except DoctorProfile.DoesNotExist:
+                profile_id = None
+        elif user.role == 'patient':
+            try:
+                profile_id = user.patient_profile.id
+            except PatientProfile.DoesNotExist:
+                profile_id = None
+        response_data['profile_id'] = profile_id
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
