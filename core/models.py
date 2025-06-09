@@ -77,8 +77,9 @@ class Appointment(models.Model):
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
-        ('completed', 'Completed'),
         ('cancelled', 'Cancelled'),
+        ('rejected', 'Rejected'),
+        ('rescheduled', 'Rescheduled')
     )
 
     patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name='appointments')
@@ -86,7 +87,7 @@ class Appointment(models.Model):
     date = models.DateField()
     start_time = models.TimeField()
     end_time = models.TimeField()
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='pending')
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -95,6 +96,23 @@ class Appointment(models.Model):
 
     def __str__(self):
         return f"{self.patient.user.get_full_name()} → {self.doctor.user.get_full_name()} on {self.date}"
+    
+    def confirm(self):
+        self.status = 'confirmed'
+        self.save()
+
+    def cancel(self):
+        self.status = 'cancelled'
+        self.save()
+
+    def reject(self):
+        self.status = 'rejected'
+        self.save()
+
+    def reschedule(self):
+        self.status = 'rescheduled'
+        self.save()
+
 
 class Notification(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
