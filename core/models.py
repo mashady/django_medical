@@ -15,7 +15,7 @@ class DoctorProfile(models.Model):
     specialty = models.ForeignKey('Specialty', on_delete=models.SET_NULL, null=True)
     bio = models.TextField(blank=True)
     contact_number = models.CharField(max_length=20)
-    
+    image = models.ImageField(upload_to='doctor_images/', null=True, blank=True)
     def __str__(self):
         return self.user.get_full_name()
 
@@ -29,9 +29,6 @@ class PatientProfile(models.Model):
     allergies = models.TextField(blank=True)
     medical_conditions = models.TextField(blank=True)
     image = models.ImageField(upload_to='patient_images/', null=True, blank=True)
-
-    
-
     def __str__(self):
         return self.user.get_full_name()
 
