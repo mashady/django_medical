@@ -9,9 +9,11 @@ from .serializers import *
 from .permissions import IsAdminUser, IsDoctor, IsPatientUser,IsOwnerDoctor
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
-from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer
+from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer, DoctorProfileSerializer ,DoctorReviewSerializer
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
+from django.core.mail import send_mail
+from django.conf import settings
 
 class CustomLoginView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -32,14 +34,27 @@ class CustomLoginView(APIView):
             refresh = RefreshToken.for_user(user)
             access_token = str(refresh.access_token)
 
+            profile_id = None
+            if user.role == 'doctor':
+                try:
+                    profile_id = user.doctor_profile.id
+                except DoctorProfile.DoesNotExist:
+                    profile_id = None
+            elif user.role == 'patient':
+                try:
+                    profile_id = user.patient_profile.id
+                except PatientProfile.DoesNotExist:
+                    profile_id = None
+
             return Response({
                 'access': access_token,
                 'user': {
-                    'id': user.id,
+                    'user_id': user.id,
                     'username': user.username,
                     'email': user.email,
                     'role': user.role,
-                }
+                    'profile_id': profile_id,
+                },
             }, status=status.HTTP_200_OK)
 
         return Response({'detail': 'Invalid credentials'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -65,6 +80,21 @@ class RegisterUserViewSet(viewsets.ModelViewSet):
         access_token = str(refresh.access_token)
         response_data = serializer.data
         response_data['access'] = access_token
+        response_data['user_id'] = user.id
+
+        # Add profile_id based on user role
+        profile_id = None
+        if user.role == 'doctor':
+            try:
+                profile_id = user.doctor_profile.id
+            except DoctorProfile.DoesNotExist:
+                profile_id = None
+        elif user.role == 'patient':
+            try:
+                profile_id = user.patient_profile.id
+            except PatientProfile.DoesNotExist:
+                profile_id = None
+        response_data['profile_id'] = profile_id
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
@@ -517,8 +547,154 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(appointments, many=True)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['patch'], url_path='status')
+    def change_status(self, request, pk=None):
+        try:
+            appointment = self.get_object()
+        except Appointment.DoesNotExist:
+            return Response({'error': 'Appointment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = request.data.get('status')
+        valid_statuses = dict(Appointment.STATUS_CHOICES).keys()
+
+        if new_status not in valid_statuses:
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+
+        appointment.status = new_status
+        appointment.save()
+
+        patient_email = appointment.patient.user.email  # adjust if user is accessed differently
+        send_mail(
+            subject='Appointment Status Updated',
+            message=f'Your appointment on {appointment.date} has been updated to "{new_status}".',
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=[patient_email],
+            fail_silently=False
+        )
+        return Response({'message': f'Appointment status updated to {new_status} and email sent.'})
 
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+
+
+class DoctorReviewViewSet(viewsets.ModelViewSet):
+    queryset = DoctorReview.objects.all()
+    serializer_class = DoctorReviewSerializer
+
+    # def get_permissions(self):
+    #     if self.action in ['create', 'update', 'partial_update']:
+    #         return [IsAuthenticated()]
+        
+    
+    def perform_create(self, serializer):
+        try:
+            patient = PatientProfile.objects.get(user=self.request.user)
+        except PatientProfile.DoesNotExist:
+            raise serializers.ValidationError("Patient profile not found.")
+        serializer.save(patient=patient)
+
+
+    def perform_update(self, serializer):
+        try:
+            patient = PatientProfile.objects.get(user=self.request.user)
+        except PatientProfile.DoesNotExist:
+            raise serializers.ValidationError("Patient profile not found.")
+        serializer.save(patient=patient)
+
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+
+        if instance.patient.user != request.user:
+            return Response(
+                {"detail": "You do not have permission to delete this review."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        self.perform_destroy(instance)
+        return Response({"detail": "Review deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
+
+
+    @action(detail=False, methods=['get'], url_path='doctor')
+    def by_doctor(self, request):
+        """
+        Retrieve reviews for a specific doctor
+        URL: /reviews/doctor/?doctor=<doctor_id>
+        """
+        doctor_id = request.query_params.get('doctor')
+
+        if not doctor_id:
+            return Response(
+                {"error": "doctor parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            DoctorProfile.objects.get(id=doctor_id)
+        except DoctorProfile.DoesNotExist:
+            return Response(
+                {"error": "Doctor not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        reviews = self.queryset.filter(doctor=doctor_id)
+
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
+    @action(detail=False, methods=['get'], url_path='patient')
+    def by_patient(self, request):
+        """
+        Retrieve reviews for a specific patient
+        URL: /reviews/patient/?patient=<patient_id>
+        """
+        patient_id = request.query_params.get('patient')
+
+        if not patient_id:
+            return Response(
+                {"error": "patient parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            PatientProfile.objects.get(id=patient_id)
+        except PatientProfile.DoesNotExist:
+            return Response(
+                {"error": "Patient not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        reviews = self.queryset.filter(patient=patient_id)
+
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
+    
+
+    @action(detail=False, methods=['get'], url_path='my-reviews')
+    def my_reviews(self, request):
+        """
+        Retrieve reviews for the current logged-in user
+        URL: /reviews/my-reviews/
+        """
+        user = request.user
+        if user.role == 'patient':
+            patient = PatientProfile.objects.get(user=user)
+            reviews = self.queryset.filter(patient=patient)
+        elif user.role == 'doctor':
+            doctor = DoctorProfile.objects.get(user=user)
+            reviews = self.queryset.filter(doctor=doctor)
+        else:
+            return Response(
+                {"error": "Only doctors and patients can access their reviews"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
+    
+
+

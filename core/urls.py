@@ -20,7 +20,8 @@ from .views import (
     DoctorListAPIView,
     DoctorViewSet,
     CombinedUserProfileView,  
-    UpdateUserProfileView
+    UpdateUserProfileView,
+    DoctorReviewViewSet
 )
 
 from .views import (
@@ -39,6 +40,7 @@ router.register(r'availability', AvailabilityViewSet)
 router.register(r'appointments', AppointmentViewSet)
 router.register(r'notifications', NotificationViewSet)
 router.register(r'doctors', DoctorViewSet, basename='doctor'),
+router.register(r'reviews', DoctorReviewViewSet, basename='review'),
 
 urlpatterns = [
     path('login/', CustomLoginView.as_view(), name='custom_login'),

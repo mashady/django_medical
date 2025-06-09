@@ -4,6 +4,7 @@ from datetime import datetime
 
 from rest_framework import serializers
 from ..models import DoctorAvailability, DoctorProfile
+from .patient_profile_serializers import PatientProfileSerializer
 
 class DoctorAvailabilitySerializer(serializers.ModelSerializer):
     
@@ -39,10 +40,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
         ]
 
     def get_patient(self, obj):
-        return {
-            'id': obj.patient.id,
-            'name': obj.patient.user.get_full_name(),
-        }
+        return PatientProfileSerializer(obj.patient).data
 
     def get_doctor(self, obj):
         return {
