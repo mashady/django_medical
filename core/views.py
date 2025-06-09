@@ -12,7 +12,8 @@ from django.shortcuts import get_object_or_404
 from .serializers import PatientProfileSerializer, PatientProfileUpdateSerializer, DoctorProfileSerializer ,DoctorReviewSerializer
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
-
+from django.core.mail import send_mail
+from rest_framework.decorators import api_view, permission_classes
 
 class CustomLoginView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -518,6 +519,23 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(appointments, many=True)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['patch'], url_path='status')
+    def change_status(self, request, pk=None):
+        try:
+            appointment = self.get_object()
+        except Appointment.DoesNotExist:
+            return Response({'error': 'Appointment not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        new_status = request.data.get('status')
+        valid_statuses = dict(Appointment.STATUS_CHOICES).keys()
+
+        if new_status not in valid_statuses:
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+
+        appointment.status = new_status
+        appointment.save()
+        return Response({'message': f'Appointment status updated to {new_status}'})
 
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
