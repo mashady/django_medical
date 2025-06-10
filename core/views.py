@@ -173,12 +173,33 @@ class UpdateUserProfileView(APIView):
         if user.role == 'doctor':
             try:
                 profile = DoctorProfile.objects.get(user=user)
-                profile_serializer = DoctorProfileSerializer(profile, data=request.data, partial=True)
+
+                # Support image update via multipart
+                if 'image' in request.FILES or 'image' in request.data:
+                    profile.image = request.FILES.get("image") or request.data.get("image")
+                    profile.save()
+                    return Response({
+                        "user": user_serializer.data,
+                        "profile": DoctorProfileSerializer(profile).data
+                    })
+
+                profile_serializer = DoctorProfileSerializer(profile, data=profile_data, partial=True)
+                if profile_serializer.is_valid():
+                    profile_serializer.save()
+                    return Response({
+                        "user": user_serializer.data,
+                        "profile": profile_serializer.data
+                    })
+                else:
+                    return Response(profile_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             except DoctorProfile.DoesNotExist:
                 return Response(
                     {"error": "Doctor profile not found"},
                     status=status.HTTP_404_NOT_FOUND
-                )
+        )
+
+                
+
         elif user.role == 'patient':
             try:
                 profile = PatientProfile.objects.get(user=user)
